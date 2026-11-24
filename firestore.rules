@@ -1,0 +1,78 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /users/{userId} {
+      function isOwner() {
+        return request.auth != null && request.auth.uid == userId;
+      }
+
+      function nonEmptyString(value) {
+        return value is string && value.matches('[\\s\\S]*\\S[\\s\\S]*');
+      }
+
+      function validProfile() {
+        return request.resource.data.keys().hasOnly([
+              'fullName', 'email', 'mobileNumber', 'gender', 'createdAt'
+            ]) &&
+            request.resource.data.keys().hasAll([
+              'fullName', 'email', 'mobileNumber', 'createdAt'
+            ]) &&
+            nonEmptyString(request.resource.data.fullName) &&
+            nonEmptyString(request.resource.data.email) &&
+            nonEmptyString(request.resource.data.mobileNumber) &&
+            (!request.resource.data.keys().hasAny(['gender']) ||
+                (request.resource.data.gender is string &&
+                    request.resource.data.gender in ['male', 'female'])) &&
+            request.resource.data.createdAt is timestamp;
+      }
+
+      allow get: if isOwner();
+      allow list: if false;
+      allow create: if isOwner() && validProfile() &&
+          request.resource.data.createdAt == request.time;
+      allow update: if isOwner() && validProfile() &&
+          request.resource.data.createdAt == resource.data.createdAt;
+      allow delete: if false;
+
+      match /addresses/{addressId} {
+        function validAddress() {
+          return request.resource.data.keys().hasOnly([
+                'city', 'district', 'streetName', 'buildingNumber', 'updatedAt'
+              ]) &&
+              request.resource.data.keys().hasAll([
+                'city', 'district', 'streetName', 'buildingNumber', 'updatedAt'
+              ]) &&
+              nonEmptyString(request.resource.data.city) &&
+              nonEmptyString(request.resource.data.district) &&
+              nonEmptyString(request.resource.data.streetName) &&
+              nonEmptyString(request.resource.data.buildingNumber) &&
+              request.resource.data.updatedAt is timestamp &&
+              request.resource.data.updatedAt == request.time;
+        }
+
+        allow get: if isOwner() && addressId == 'primary';
+        allow list: if false;
+        allow create, update: if isOwner() &&
+            addressId == 'primary' &&
+            validAddress();
+        allow delete: if false;
+      }
+
+      match /favorites/{productId} {
+        function validFavorite() {
+          return request.resource.data.keys().hasOnly(['productId', 'addedAt']) &&
+              request.resource.data.keys().hasAll(['productId', 'addedAt']) &&
+              nonEmptyString(request.resource.data.productId) &&
+              request.resource.data.productId == productId &&
+              request.resource.data.addedAt is timestamp &&
+              request.resource.data.addedAt == request.time;
+        }
+
+        allow get, list: if isOwner();
+        allow create: if isOwner() && validFavorite();
+        allow update: if false;
+        allow delete: if isOwner();
+      }
+    }
+  }
+}
